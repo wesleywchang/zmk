@@ -1,7 +1,7 @@
 if SHIELD_MIN34_LEFT
 
 config ZMK_KEYBOARD_NAME
-    default "min34 split keyboard"
+    default "min34"
 
 config ZMK_SPLIT_ROLE_CENTRAL
     default y
