@@ -5,15 +5,16 @@
  */
 
 #include <zephyr/types.h>
+#include <zephyr/init.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/conn.h>
-#include <bluetooth/uuid.h>
-#include <bluetooth/gatt.h>
-#include <bluetooth/hci.h>
-#include <sys/byteorder.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/uuid.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/sys/byteorder.h>
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -24,7 +25,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/split/bluetooth/service.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
-#include <init.h>
 
 static int start_scan(void);
 
@@ -47,7 +47,7 @@ struct peripheral_slot {
     uint8_t changed_positions[POSITION_STATE_DATA_LEN];
 };
 
-static struct peripheral_slot peripherals[ZMK_BLE_SPLIT_PERIPHERAL_COUNT];
+static struct peripheral_slot peripherals[ZMK_SPLIT_BLE_PERIPHERAL_COUNT];
 
 static const struct bt_uuid_128 split_service_uuid = BT_UUID_INIT_128(ZMK_SPLIT_BT_SERVICE_UUID);
 
@@ -65,7 +65,7 @@ void peripheral_event_work_callback(struct k_work *work) {
 K_WORK_DEFINE(peripheral_event_work, peripheral_event_work_callback);
 
 int peripheral_slot_index_for_conn(struct bt_conn *conn) {
-    for (int i = 0; i < ZMK_BLE_SPLIT_PERIPHERAL_COUNT; i++) {
+    for (int i = 0; i < ZMK_SPLIT_BLE_PERIPHERAL_COUNT; i++) {
         if (peripherals[i].conn == conn) {
             return i;
         }
@@ -84,7 +84,7 @@ struct peripheral_slot *peripheral_slot_for_conn(struct bt_conn *conn) {
 }
 
 int release_peripheral_slot(int index) {
-    if (index < 0 || index >= ZMK_BLE_SPLIT_PERIPHERAL_COUNT) {
+    if (index < 0 || index >= ZMK_SPLIT_BLE_PERIPHERAL_COUNT) {
         return -EINVAL;
     }
 
@@ -131,7 +131,7 @@ int release_peripheral_slot(int index) {
 }
 
 int reserve_peripheral_slot() {
-    for (int i = 0; i < ZMK_BLE_SPLIT_PERIPHERAL_COUNT; i++) {
+    for (int i = 0; i < ZMK_SPLIT_BLE_PERIPHERAL_COUNT; i++) {
         if (peripherals[i].state == PERIPHERAL_SLOT_STATE_OPEN) {
             // Be sure the slot is fully reinitialized.
             release_peripheral_slot(i);
@@ -377,8 +377,7 @@ static bool split_central_eir_found(struct bt_data *data, void *user_data) {
                 bt_uuid_to_str(&uuid.uuid, uuid_str, sizeof(uuid_str));
                 bt_uuid_to_str(BT_UUID_DECLARE_128(ZMK_SPLIT_BT_SERVICE_UUID), service_uuid_str,
                                sizeof(service_uuid_str));
-                LOG_DBG("UUID %s does not match split UUID: %s", log_strdup(uuid_str),
-                        log_strdup(service_uuid_str));
+                LOG_DBG("UUID %s does not match split UUID: %s", uuid_str, service_uuid_str);
                 continue;
             }
 
@@ -433,8 +432,7 @@ static void split_central_device_found(const bt_addr_le_t *addr, int8_t rssi, ui
     char dev[BT_ADDR_LE_STR_LEN];
 
     bt_addr_le_to_str(addr, dev, sizeof(dev));
-    LOG_DBG("[DEVICE]: %s, AD evt type %u, AD data len %u, RSSI %i", log_strdup(dev), type, ad->len,
-            rssi);
+    LOG_DBG("[DEVICE]: %s, AD evt type %u, AD data len %u, RSSI %i", dev, type, ad->len, rssi);
 
     /* We're only interested in connectable events */
     if (type == BT_GAP_ADV_TYPE_ADV_IND || type == BT_GAP_ADV_TYPE_ADV_DIRECT_IND) {
@@ -469,7 +467,7 @@ static void split_central_connected(struct bt_conn *conn, uint8_t conn_err) {
     }
 
     if (conn_err) {
-        LOG_ERR("Failed to connect to %s (%u)", log_strdup(addr), conn_err);
+        LOG_ERR("Failed to connect to %s (%u)", addr, conn_err);
 
         release_peripheral_slot_for_conn(conn);
 
@@ -477,7 +475,7 @@ static void split_central_connected(struct bt_conn *conn, uint8_t conn_err) {
         return;
     }
 
-    LOG_DBG("Connected: %s", log_strdup(addr));
+    LOG_DBG("Connected: %s", addr);
 
     confirm_peripheral_slot_conn(conn);
     split_central_process_connection(conn);
@@ -489,7 +487,7 @@ static void split_central_disconnected(struct bt_conn *conn, uint8_t reason) {
 
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-    LOG_DBG("Disconnected: %s (reason %d)", log_strdup(addr), reason);
+    LOG_DBG("Disconnected: %s (reason %d)", addr, reason);
 
     err = release_peripheral_slot_for_conn(conn);
 
@@ -506,7 +504,7 @@ static struct bt_conn_cb conn_callbacks = {
 };
 
 K_THREAD_STACK_DEFINE(split_central_split_run_q_stack,
-                      CONFIG_ZMK_BLE_SPLIT_CENTRAL_SPLIT_RUN_STACK_SIZE);
+                      CONFIG_ZMK_SPLIT_BLE_CENTRAL_SPLIT_RUN_STACK_SIZE);
 
 struct k_work_q split_central_split_run_q;
 
@@ -517,7 +515,7 @@ struct zmk_split_run_behavior_payload_wrapper {
 
 K_MSGQ_DEFINE(zmk_split_central_split_run_msgq,
               sizeof(struct zmk_split_run_behavior_payload_wrapper),
-              CONFIG_ZMK_BLE_SPLIT_CENTRAL_SPLIT_RUN_QUEUE_SIZE, 4);
+              CONFIG_ZMK_SPLIT_BLE_CENTRAL_SPLIT_RUN_QUEUE_SIZE, 4);
 
 void split_central_split_run_callback(struct k_work *work) {
     struct zmk_split_run_behavior_payload_wrapper payload_wrapper;
@@ -579,7 +577,7 @@ int zmk_split_bt_invoke_behavior(uint8_t source, struct zmk_behavior_binding *bi
     if (strlcpy(payload.behavior_dev, binding->behavior_dev, payload_dev_size) >=
         payload_dev_size) {
         LOG_ERR("Truncated behavior label %s to %s before invoking peripheral behavior",
-                log_strdup(binding->behavior_dev), log_strdup(payload.behavior_dev));
+                binding->behavior_dev, payload.behavior_dev);
     }
 
     struct zmk_split_run_behavior_payload_wrapper wrapper = {.source = source, .payload = payload};
